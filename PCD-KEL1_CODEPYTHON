@@ -1,1 +1,77 @@
+import cv2
+import os
+import numpy as np
+import time 
 
+# Buat folder untuk menyimpan dataset jika belum ada
+dataset_folder = "dataset_wajah"
+if not os.path.exists(dataset_folder):
+    os.makedirs(dataset_folder)
+
+# Inisialisasi webcam
+cap = cv2.VideoCapture(0)  # 0 untuk webcam bawaan, 1 untuk eksternal
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+jumlah_gambar = 20  # Jumlah gambar yang ingin dikumpulkan
+hitung = 0
+waktu_terakhir = time.time()  # Catat waktu awal
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Ubah ke grayscale untuk deteksi wajah lebih akurat
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # Deteksi wajah
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(50, 50))
+
+    for (x, y, w, h) in faces:
+        wajah = frame[y:y+h, x:x+w]
+        wajah = cv2.resize(wajah, (200, 200))  # Ubah ukuran gambar wajah
+        
+        # **Peningkatan Kualitas Gambar Berwarna**
+        b, g, r = cv2.split(wajah)
+        b_eq = cv2.equalizeHist(b)
+        g_eq = cv2.equalizeHist(g)
+        r_eq = cv2.equalizeHist(r)
+        wajah_eq = cv2.merge((b_eq, g_eq, r_eq))  # Gabungkan kembali ke gambar berwarna
+
+        # Buat sharpening filter
+        kernel = np.array([[0, -1, 0],
+                           [-1, 5, -1],
+                           [0, -1, 0]])  
+        wajah_sharp = cv2.filter2D(wajah_eq, -1, kernel)  # Terapkan filter sharpening
+
+        # Cek apakah sudah lewat 2 detik sejak foto terakhir
+        if time.time() - waktu_terakhir >= 2:
+            file_name = os.path.join(dataset_folder, f"wajah_{hitung}.jpg")
+            cv2.imwrite(file_name, wajah_sharp)  # Simpan gambar wajah yang sudah diperbaiki
+            hitung += 1
+            waktu_terakhir = time.time()
+            print(f"Gambar {hitung} diambil...")
+
+        # Gambar kotak di sekitar wajah pada frame utama
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    # **Deteksi garis di seluruh frame dengan Canny Edge Detection**
+    edges = cv2.Canny(gray, 100, 200)
+
+    # **Gabungkan dua tampilan: kamera asli & deteksi tepi**
+    frame_resized = cv2.resize(frame, (400, 300))  # Resize agar seimbang
+    edges_resized = cv2.resize(edges, (400, 300))  # Resize agar seimbang
+    combined_view = np.hstack((frame_resized, cv2.cvtColor(edges_resized, cv2.COLOR_GRAY2BGR)))  # Gabungkan
+
+    # Tampilkan dalam satu jendela
+    cv2.imshow("Pengambilan Wajah & Deteksi Garis", combined_view)
+
+    # Hentikan jika sudah cukup gambar atau tekan 'q'
+    if hitung >= jumlah_gambar or cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Bersihkan
+cap.release()
+cv2.destroyAllWindows()
+
+print(f"Pengambilan selesai! {hitung} gambar wajah disimpan di folder '{dataset_folder}'.")
